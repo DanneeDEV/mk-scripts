@@ -759,6 +759,239 @@
       return;
     }
 
+    // ---------- LISTING MODAL (matches your Webflow markup) ----------
+    const modalOverlay = qs('[data-mk="listing_modal_overlay"]');
+    const modalEl      = qs('[data-mk="listing_modal"]', modalOverlay || document);
+    
+    const modalCloseEl = qs('[data-mk="listing_modal_close"]', modalOverlay || document);
+    const modalImgEl   = qs('[data-mk="listing_modal_image"]', modalOverlay || document);
+    
+    const modalTimeEl  = qs('[data-mk="listing_modal_timeleft"]', modalOverlay || document);
+    const modalSourceEl= qs('[data-mk="listing_modal_source"]', modalOverlay || document);
+    
+    const modalSubEl   = qs('[data-mk="listing_modal_sub"]', modalOverlay || document);
+    const modalTitleEl = qs('[data-mk="listing_modal_title"]', modalOverlay || document);
+    const modalLocEl   = qs('[data-mk="listing_modal_location"]', modalOverlay || document);
+    
+    const modalAnalysisEl = qs('[data-mk="listing_modal_analysis"]', modalOverlay || document);
+    
+    const modalPriceEl = qs('[data-mk="listing_modal_price"]', modalOverlay || document);
+    const modalUpdatedEl = qs('[data-mk="listing_modal_updated"]', modalOverlay || document);
+    
+    const modalOpenEl  = qs('[data-mk="listing_modal_open"]', modalOverlay || document);
+    const modalCopyEl  = qs('[data-mk="listing_modal_copy"]', modalOverlay || document);
+    
+    const modalChipsEl = qs('[data-mk="listing_modal_chips"]', modalOverlay || document);
+    
+    const itemById = new Map();
+    let lastActiveEl = null;
+    let currentModalUrl = "";
+    
+    function stopBackgroundScroll() {
+      try { window.lenis?.stop?.(); } catch(e) {}
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";
+    }
+    function startBackgroundScroll() {
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+      try { window.lenis?.start?.(); } catch(e) {}
+    }
+    
+    function openModal(item) {
+      if (!modalOverlay || !modalEl || !item) return;
+    
+      lastActiveEl = document.activeElement;
+    
+      stopBackgroundScroll();
+    
+      const imgUrl = item?.imageUrl || item?.image_url || item?.image || "";
+      if (modalImgEl) modalImgEl.style.backgroundImage = imgUrl ? `url("${imgUrl}")` : "";
+    
+      if (modalTimeEl) {
+        const t = fmtTimeLeft(item?.auction_ends_at);
+        modalTimeEl.textContent = t ? t.toLowerCase() + " kvar" : "—";
+      }
+    
+      if (modalSourceEl) modalSourceEl.textContent = (item?.source ? String(item.source).toUpperCase() : "—");
+    
+      if (modalSubEl) modalSubEl.textContent = item?.category_sub || item?.category_main || "—";
+      if (modalTitleEl) modalTitleEl.textContent = item?.title || "—";
+      if (modalLocEl) modalLocEl.textContent = (item?.location || item?.lan_slug || "—");
+    
+      if (modalPriceEl) modalPriceEl.textContent = fmtPriceSEK(item?.price);
+    
+      // "Uppdaterat för X minuter sedan" (fallback om du inte har updated_at)
+      if (modalUpdatedEl) {
+        const iso = item?.updated_at || item?.last_seen_at || item?.first_seen_at || item?.created_at || null;
+        const ms = iso ? Date.parse(iso) : NaN;
+        if (Number.isFinite(ms)) {
+          const mins = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+          modalUpdatedEl.textContent = mins < 1 ? "Uppdaterat nyss" : `Uppdaterat för ${mins} minuter sedan`;
+        } else {
+          modalUpdatedEl.textContent = "";
+        }
+      }
+    
+      // Systemanalys (visa bara om text finns)
+      if (modalAnalysisEl) {
+        const txt = (item?.system_analysis || item?.analysis || "").toString().trim();
+        if (txt) {
+          modalAnalysisEl.style.display = "";
+          modalAnalysisEl.textContent = txt;
+        } else {
+          // lämna din design men göm om ingen data
+          modalAnalysisEl.style.display = "none";
+          modalAnalysisEl.textContent = "";
+        }
+      }
+    
+      // Chips (din container ska helst vara tom)
+      if (modalChipsEl) {
+        modalChipsEl.innerHTML = "";
+    
+        const chips = [];
+        const toNum = (v) => {
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        };
+    
+        const weight = toNum(item?.weight_kg);
+        if (weight) chips.push(`${fmtInt(weight)} kg`);
+    
+        const ton = toNum(item?.weight_ton);
+        if (ton) chips.push(`${fmtInt(ton)} ton`);
+    
+        const year = toNum(item?.year);
+        if (year) chips.push(String(year));
+    
+        const hours = toNum(item?.operating_hours ?? item?.hours);
+        if (hours) chips.push(`${fmtInt(hours)} h`);
+    
+        const kw = toNum(item?.engine_power_kw);
+        if (kw) chips.push(`${Number.isInteger(kw) ? fmtInt(kw) : kw.toLocaleString("sv-SE",{maximumFractionDigits:1})} kW`);
+    
+        const brand = (item?.brand || "").toString().trim();
+        if (brand) chips.push(brand);
+    
+        for (const t of chips.slice(0, 8)) {
+          const chip = document.createElement("div");
+          chip.className = "mk-modal-chip"; // om du vill, annars byt till din klass
+          chip.textContent = t;
+          modalChipsEl.appendChild(chip);
+        }
+      }
+    
+      currentModalUrl = item?.url || item?.external_url || "#";
+    
+      // Om modalOpenEl är <a>, sätt href. Om det är div, bara lagra URL och öppna on click.
+      if (modalOpenEl && modalOpenEl.tagName === "A") {
+        modalOpenEl.href = currentModalUrl;
+        modalOpenEl.target = "_blank";
+        modalOpenEl.rel = "noopener noreferrer";
+      }
+    
+      modalOverlay.classList.add("is-open");
+      modalEl.setAttribute("aria-hidden", "false");
+    
+      setTimeout(() => modalCloseEl?.focus?.(), 0);
+    }
+    
+    function closeModal() {
+      if (!modalOverlay || !modalEl) return;
+    
+      modalOverlay.classList.remove("is-open");
+      modalEl.setAttribute("aria-hidden", "true");
+    
+      startBackgroundScroll();
+      setTimeout(() => lastActiveEl?.focus?.(), 0);
+    }
+    
+    // bind once
+    if (modalOverlay && !modalOverlay.dataset.mkBound) {
+      modalOverlay.dataset.mkBound = "1";
+    
+      // click outside closes
+      modalOverlay.addEventListener("click", (e) => {
+        if (e.target === modalOverlay) closeModal();
+      });
+    
+      // close button
+      if (modalCloseEl) {
+        modalCloseEl.addEventListener("click", (e) => {
+          e.preventDefault();
+          closeModal();
+        });
+      }
+    
+      // esc closes
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && modalOverlay.classList.contains("is-open")) closeModal();
+      });
+    
+      // open listing
+      if (modalOpenEl && modalOpenEl.tagName !== "A") {
+        modalOpenEl.addEventListener("click", (e) => {
+          e.preventDefault();
+          if (currentModalUrl && currentModalUrl !== "#") window.open(currentModalUrl, "_blank", "noopener,noreferrer");
+        });
+      }
+    
+      // copy link
+      if (modalCopyEl) {
+        modalCopyEl.addEventListener("click", async (e) => {
+          e.preventDefault();
+          const href = currentModalUrl || "";
+          if (!href || href === "#") return;
+    
+          try {
+            await navigator.clipboard.writeText(href);
+          } catch (err) {
+            const ta = document.createElement("textarea");
+            ta.value = href;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            ta.remove();
+          }
+        });
+      }
+    }
+    
+    // click on card -> open modal (delegation, works with pagination)
+    if (grid && !grid.dataset.mkModalBound) {
+      grid.dataset.mkModalBound = "1";
+    
+      grid.addEventListener("click", (e) => {
+        const card = e.target.closest('[data-mk="card_item"]');
+        if (!card) return;
+    
+        // allow ctrl/cmd/middle click to behave normally
+        if (e.ctrlKey || e.metaKey || e.button === 1) return;
+    
+        // allow ctrl/cmd/middle click
+        if (e.ctrlKey || e.metaKey || e.button === 1) return;
+        
+        // 👇 om du vill: låt bara “öppna extern länk”-ikonen funka som vanlig länk
+        const a = e.target.closest("a");
+        if (a && a.closest('[data-mk="card_link"]')) {
+          // Stoppa navigation, vi öppnar modal istället
+          e.preventDefault();
+        } else if (a) {
+          // annan länk inuti kortet (om du har någon)
+          return;
+        }
+        
+            
+        e.preventDefault();
+    
+        const id = String(card.dataset.id || "");
+        const item = itemById.get(id);
+        openModal(item);
+      });
+    }
+
+
 
     // ---------- NO RESULTS UI ----------
     const noResultsEl =
@@ -1066,6 +1299,8 @@
       const frag = document.createDocumentFragment();
 
       for (const item of items) {
+        itemById.set(String(item?.id ?? ""), item);
+
         const el = tpl.cloneNode(true);
         el.classList.remove("is-template");
         el.removeAttribute("style");
@@ -1634,5 +1869,6 @@
     }
   })();
 })();
+
 
 
