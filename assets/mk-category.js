@@ -786,17 +786,40 @@
     const itemById = new Map();
     let lastActiveEl = null;
     let currentModalUrl = "";
+
+    let __mkScrollLockPad = 0;
     
-    function stopBackgroundScroll() {
-      try { window.lenis?.stop?.(); } catch(e) {}
+    function getScrollbarWidth() {
+      return Math.max(0, window.innerWidth - document.documentElement.clientWidth);
+    }
+    
+    function lockScroll() {
+      __mkScrollLockPad = getScrollbarWidth();
+    
+      // Lägg padding så layout inte hoppar när scrollbar försvinner
+      document.body.style.paddingRight = __mkScrollLockPad ? `${__mkScrollLockPad}px` : "";
       document.documentElement.style.overflow = "hidden";
       document.body.style.overflow = "hidden";
+    
+      try { window.lenis?.stop?.(); } catch(e) {}
     }
-    function startBackgroundScroll() {
+    
+    function unlockScroll() {
       document.documentElement.style.overflow = "";
       document.body.style.overflow = "";
+      document.body.style.paddingRight = "";   // reset padding
+    
       try { window.lenis?.start?.(); } catch(e) {}
     }
+
+    
+    function stopBackgroundScroll() { lockScroll(); }
+    function startBackgroundScroll() { unlockScroll(); }
+
+    
+
+    // ---------- modal open/close ----------
+    let __mkModalClosing = false;
     
     function openModal(item) {
       if (!modalOverlay || !modalEl || !item) return;
@@ -821,7 +844,7 @@
     
       if (modalPriceEl) modalPriceEl.textContent = fmtPriceSEK(item?.price);
     
-      // "Uppdaterat för X minuter sedan" (fallback om du inte har updated_at)
+      // "Uppdaterat för X minuter sedan"
       if (modalUpdatedEl) {
         const iso = item?.updated_at || item?.last_seen_at || item?.first_seen_at || item?.created_at || null;
         const ms = iso ? Date.parse(iso) : NaN;
@@ -833,20 +856,19 @@
         }
       }
     
-      // Systemanalys (visa bara om text finns)
+      // Systemanalys
       if (modalAnalysisEl) {
         const txt = (item?.system_analysis || item?.analysis || "").toString().trim();
         if (txt) {
           modalAnalysisEl.style.display = "";
           modalAnalysisEl.textContent = txt;
         } else {
-          // lämna din design men göm om ingen data
           modalAnalysisEl.style.display = "none";
           modalAnalysisEl.textContent = "";
         }
       }
     
-      // Chips (din container ska helst vara tom)
+      // Chips
       if (modalChipsEl) {
         modalChipsEl.innerHTML = "";
     
@@ -876,7 +898,7 @@
     
         for (const t of chips.slice(0, 8)) {
           const chip = document.createElement("div");
-          chip.className = "mk-modal-chip"; // om du vill, annars byt till din klass
+          chip.className = "mk-modal-chip";
           chip.textContent = t;
           modalChipsEl.appendChild(chip);
         }
@@ -884,27 +906,40 @@
     
       currentModalUrl = item?.url || item?.external_url || "#";
     
-      // Om modalOpenEl är <a>, sätt href. Om det är div, bara lagra URL och öppna on click.
+      // CTA url (om <a>)
       if (modalOpenEl && modalOpenEl.tagName === "A") {
         modalOpenEl.href = currentModalUrl;
         modalOpenEl.target = "_blank";
         modalOpenEl.rel = "noopener noreferrer";
       }
     
-      modalOverlay.classList.add("is-open");
       modalEl.setAttribute("aria-hidden", "false");
     
-      setTimeout(() => modalCloseEl?.focus?.(), 0);
+      // ✅ force start state -> öppna nästa frame (garanterar transition)
+      __mkModalClosing = false;
+      modalOverlay.classList.remove("is-open");
+      void modalOverlay.offsetHeight;
+    
+      requestAnimationFrame(() => {
+        modalOverlay.classList.add("is-open");
+        setTimeout(() => modalCloseEl?.focus?.(), 0);
+      });
     }
     
     function closeModal() {
       if (!modalOverlay || !modalEl) return;
+      if (__mkModalClosing) return;
+      __mkModalClosing = true;
     
       modalOverlay.classList.remove("is-open");
       modalEl.setAttribute("aria-hidden", "true");
     
-      startBackgroundScroll();
-      setTimeout(() => lastActiveEl?.focus?.(), 0);
+      // ✅ unlock scroll efter animationen (matcha din CSS-duration)
+      setTimeout(() => {
+        startBackgroundScroll();
+        __mkModalClosing = false;
+        setTimeout(() => lastActiveEl?.focus?.(), 0);
+      }, 220);
     }
     
     // bind once
@@ -929,7 +964,7 @@
         if (e.key === "Escape" && modalOverlay.classList.contains("is-open")) closeModal();
       });
     
-      // open listing
+      // open listing (om inte <a>)
       if (modalOpenEl && modalOpenEl.tagName !== "A") {
         modalOpenEl.addEventListener("click", (e) => {
           e.preventDefault();
@@ -957,7 +992,7 @@
         });
       }
     }
-    
+        
     // click on card -> open modal (delegation, works with pagination)
     if (grid && !grid.dataset.mkModalBound) {
       grid.dataset.mkModalBound = "1";
@@ -1869,6 +1904,7 @@
     }
   })();
 })();
+
 
 
 
