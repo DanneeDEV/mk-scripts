@@ -818,8 +818,30 @@
 
     
 
-    // ---------- modal open/close ----------
     let __mkModalClosing = false;
+    
+    function waitForTransition(el, fallbackMs = 320) {
+      return new Promise((resolve) => {
+        let done = false;
+    
+        const finish = () => {
+          if (done) return;
+          done = true;
+          el.removeEventListener("transitionend", onEnd);
+          clearTimeout(t);
+          resolve();
+        };
+    
+        const onEnd = (e) => {
+          if (e.target !== el) return;
+          if (e.propertyName !== "opacity" && e.propertyName !== "transform") return;
+          finish();
+        };
+    
+        const t = setTimeout(finish, fallbackMs);
+        el.addEventListener("transitionend", onEnd);
+      });
+    }
     
     function openModal(item) {
       if (!modalOverlay || !modalEl || !item) return;
@@ -828,6 +850,7 @@
     
       stopBackgroundScroll();
     
+      // --- fyll din data som du redan gör ---
       const imgUrl = item?.imageUrl || item?.image_url || item?.image || "";
       if (modalImgEl) modalImgEl.style.backgroundImage = imgUrl ? `url("${imgUrl}")` : "";
     
@@ -837,14 +860,11 @@
       }
     
       if (modalSourceEl) modalSourceEl.textContent = (item?.source ? String(item.source).toUpperCase() : "—");
-    
       if (modalSubEl) modalSubEl.textContent = item?.category_sub || item?.category_main || "—";
       if (modalTitleEl) modalTitleEl.textContent = item?.title || "—";
       if (modalLocEl) modalLocEl.textContent = (item?.location || item?.lan_slug || "—");
-    
       if (modalPriceEl) modalPriceEl.textContent = fmtPriceSEK(item?.price);
     
-      // "Uppdaterat för X minuter sedan"
       if (modalUpdatedEl) {
         const iso = item?.updated_at || item?.last_seen_at || item?.first_seen_at || item?.created_at || null;
         const ms = iso ? Date.parse(iso) : NaN;
@@ -856,67 +876,26 @@
         }
       }
     
-      // Systemanalys
       if (modalAnalysisEl) {
         const txt = (item?.system_analysis || item?.analysis || "").toString().trim();
-        if (txt) {
-          modalAnalysisEl.style.display = "";
-          modalAnalysisEl.textContent = txt;
-        } else {
-          modalAnalysisEl.style.display = "none";
-          modalAnalysisEl.textContent = "";
-        }
+        modalAnalysisEl.style.display = txt ? "" : "none";
+        modalAnalysisEl.textContent = txt || "";
       }
     
-      // Chips
-      if (modalChipsEl) {
-        modalChipsEl.innerHTML = "";
-    
-        const chips = [];
-        const toNum = (v) => {
-          const n = Number(v);
-          return Number.isFinite(n) ? n : null;
-        };
-    
-        const weight = toNum(item?.weight_kg);
-        if (weight) chips.push(`${fmtInt(weight)} kg`);
-    
-        const ton = toNum(item?.weight_ton);
-        if (ton) chips.push(`${fmtInt(ton)} ton`);
-    
-        const year = toNum(item?.year);
-        if (year) chips.push(String(year));
-    
-        const hours = toNum(item?.operating_hours ?? item?.hours);
-        if (hours) chips.push(`${fmtInt(hours)} h`);
-    
-        const kw = toNum(item?.engine_power_kw);
-        if (kw) chips.push(`${Number.isInteger(kw) ? fmtInt(kw) : kw.toLocaleString("sv-SE",{maximumFractionDigits:1})} kW`);
-    
-        const brand = (item?.brand || "").toString().trim();
-        if (brand) chips.push(brand);
-    
-        for (const t of chips.slice(0, 8)) {
-          const chip = document.createElement("div");
-          chip.className = "mk-modal-chip";
-          chip.textContent = t;
-          modalChipsEl.appendChild(chip);
-        }
-      }
+      // chips bygger du som innan...
     
       currentModalUrl = item?.url || item?.external_url || "#";
-    
-      // CTA url (om <a>)
       if (modalOpenEl && modalOpenEl.tagName === "A") {
         modalOpenEl.href = currentModalUrl;
         modalOpenEl.target = "_blank";
         modalOpenEl.rel = "noopener noreferrer";
       }
     
+      // --- öppna smooth ---
+      __mkModalClosing = false;
       modalEl.setAttribute("aria-hidden", "false");
     
-      // ✅ force start state -> öppna nästa frame (garanterar transition)
-      __mkModalClosing = false;
+      // säkerställ startläge innan vi togglar
       modalOverlay.classList.remove("is-open");
       void modalOverlay.offsetHeight;
     
@@ -926,7 +905,7 @@
       });
     }
     
-    function closeModal() {
+    async function closeModal() {
       if (!modalOverlay || !modalEl) return;
       if (__mkModalClosing) return;
       __mkModalClosing = true;
@@ -934,13 +913,14 @@
       modalOverlay.classList.remove("is-open");
       modalEl.setAttribute("aria-hidden", "true");
     
-      // ✅ unlock scroll efter animationen (matcha din CSS-duration)
-      setTimeout(() => {
-        startBackgroundScroll();
-        __mkModalClosing = false;
-        setTimeout(() => lastActiveEl?.focus?.(), 0);
-      }, 220);
+      // vänta tills själva modalen animat färdigt (transform/opacity)
+      await waitForTransition(modalEl, 340);
+    
+      startBackgroundScroll();
+      __mkModalClosing = false;
+      setTimeout(() => lastActiveEl?.focus?.(), 0);
     }
+
     
     // bind once
     if (modalOverlay && !modalOverlay.dataset.mkBound) {
@@ -1904,6 +1884,7 @@
     }
   })();
 })();
+
 
 
 
