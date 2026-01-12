@@ -781,7 +781,9 @@
     const modalOpenEl  = qs('[data-mk="listing_modal_open"]', modalOverlay || document);
     const modalCopyEl  = qs('[data-mk="listing_modal_copy"]', modalOverlay || document);
     
-    const modalChipsEl = qs('[data-mk="listing_modal_chips"]', modalOverlay || document);
+    const modalChipsTpl  = qs('[data-mk="listing_modal_chips"]', modalOverlay || document); // template (din befintliga chip)
+    const modalChipsWrap = modalChipsTpl ? modalChipsTpl.parentElement : null;              // wrap/listan
+
     
     const itemById = new Map();
     let lastActiveEl = null;
@@ -842,6 +844,88 @@
         el.addEventListener("transitionend", onEnd);
       });
     }
+
+    function renderModalChips(item) {
+      if (!modalChipsWrap || !modalChipsTpl) return;
+    
+      // 1) Rensa gamla chips (men behåll template)
+      [...modalChipsWrap.querySelectorAll(".mk-modal-chips")].forEach(el => {
+        if (el !== modalChipsTpl) el.remove();
+      });
+    
+      // 2) Göm template (så den inte syns som “22 ton” alltid)
+      modalChipsTpl.style.display = "none";
+    
+      // 3) Bygg chip-texter
+      const chips = [];
+      const toNum = (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      };
+      const clean = (v) => String(v ?? "").replace(/\s+/g, " ").trim();
+      const push = (t) => {
+        const s = clean(t);
+        if (!s) return;
+        const key = s.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        chips.push(s);
+      };
+      const seen = new Set();
+    
+      const year = toNum(item?.year);
+      if (year) push(year);
+    
+      const hours = toNum(item?.operating_hours ?? item?.hours);
+      if (hours && hours > 0) push(`${fmtInt(hours)} h`);
+    
+      const weightKg = toNum(item?.weight_kg);
+      if (weightKg && weightKg > 0) {
+        const tons = weightKg / 1000;
+        push(tons >= 1 ? `${tons.toLocaleString("sv-SE", { maximumFractionDigits: 1 })} ton` : `${fmtInt(weightKg)} kg`);
+      }
+    
+      const kw = toNum(item?.engine_power_kw);
+      if (kw && kw > 0) {
+        const kwTxt = Number.isInteger(kw) ? fmtInt(kw) : kw.toLocaleString("sv-SE", { maximumFractionDigits: 1 });
+        push(`${kwTxt} kW`);
+      }
+    
+      const fuel = clean(item?.fuel);
+      if (fuel) push(fuel.toUpperCase());
+    
+      const drive = clean(item?.drive);
+      if (drive) push(drive);
+    
+      // Om du har specs-objekt i datan
+      const specs = item?.specs && typeof item.specs === "object" ? item.specs : null;
+      const truthy = (v) => v === true || v === "true" || v === 1 || v === "1" || String(v).toLowerCase() === "ja";
+    
+      if (specs) {
+        if (truthy(specs.rototilt) || truthy(specs.tiltrotator)) push("Rototilt");
+        if (truthy(specs.snabbfaste) || truthy(specs["snabbfäste"])) push("Snabbfäste");
+        if (truthy(specs.ac) || truthy(specs.klimat)) push("AC");
+        if (truthy(specs.webasto) || truthy(specs.värmare)) push("Värmare");
+      }
+    
+      // 4) Klona template -> skapa chips (använd samma klass mk-modal-chips)
+      const MAX = 10;
+      for (const text of chips.slice(0, MAX)) {
+        const chip = modalChipsTpl.cloneNode(true);
+        chip.style.display = "";          // visa chip
+        chip.textContent = text;
+    
+        // Viktigt: undvik att du får massa element med samma data-mk
+        chip.removeAttribute("data-mk");
+    
+        modalChipsWrap.appendChild(chip);
+      }
+    }
+    
+
+
+
+    
     
     function openModal(item) {
       if (!modalOverlay || !modalEl || !item) return;
@@ -882,7 +966,7 @@
         modalAnalysisEl.textContent = txt || "";
       }
     
-      // chips bygger du som innan...
+      renderModalChips(item);
     
       currentModalUrl = item?.url || item?.external_url || "#";
       if (modalOpenEl && modalOpenEl.tagName === "A") {
@@ -1884,6 +1968,7 @@
     }
   })();
 })();
+
 
 
 
