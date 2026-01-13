@@ -980,21 +980,26 @@ function renderModalChips(item) {
         modalAnalysisEl.style.display = txt ? "" : "none";
         modalAnalysisEl.textContent = txt || "";
       
-        // 2) sätt globals till feedback-systemet (så knapparna vet vad de ska skicka)
-        window.__MK_CURRENT_LISTING_ID = item?.id ? String(item.id) : (window.__MK_CURRENT_LISTING_ID || "");
+        // 2) globals till feedback-systemet
+        window.__MK_CURRENT_LISTING_ID = item?.id ? String(item.id) : "";
         window.__MK_CURRENT_TITLE = (item?.title || "").toString().trim();
-        window.__MK_CURRENT_URL = (item?.url || item?.source_url || "").toString().trim();
+        window.__MK_CURRENT_URL = (item?.url || item?.external_url || item?.source_url || "").toString().trim();
         window.__MK_CURRENT_MODEL = (item?.analysis_model || item?.model || "").toString().trim();
         window.__MK_CURRENT_ANALYSIS = txt;
       
-        // 3) initiera feedback om analys finns (annars göm)
-        const fb = document.querySelector('[data-mk="analysis_feedback"]');
-        if (fb) fb.style.display = txt ? "" : "none";
+        // 3) visa/göm feedback (sök INUTI modalen) + reset state
+        const fb = modalEl.querySelector('[data-mk="analysis_feedback"]');
+        if (fb) {
+          fb.style.display = txt ? "" : "none";
       
-        if (txt && typeof window.MK_initAnalysisFeedback === "function") {
-          window.MK_initAnalysisFeedback();
+          const upBtn = fb.querySelector('[data-mk="analysis_up"]');
+          const downBtn = fb.querySelector('[data-mk="analysis_down"]');
+          upBtn?.classList.remove("is-selected");
+          downBtn?.classList.remove("is-selected");
         }
+
       }
+
 
     
       renderModalChips(item);
@@ -1999,6 +2004,7 @@ function renderModalChips(item) {
     }
   })();
 })();
+
 
 
 
