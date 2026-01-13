@@ -975,9 +975,27 @@ function renderModalChips(item) {
     
       if (modalAnalysisEl) {
         const txt = (item?.system_analysis || item?.analysis || "").toString().trim();
+      
+        // 1) visa/göm analysen
         modalAnalysisEl.style.display = txt ? "" : "none";
         modalAnalysisEl.textContent = txt || "";
+      
+        // 2) sätt globals till feedback-systemet (så knapparna vet vad de ska skicka)
+        window.__MK_CURRENT_LISTING_ID = item?.id ? String(item.id) : (window.__MK_CURRENT_LISTING_ID || "");
+        window.__MK_CURRENT_TITLE = (item?.title || "").toString().trim();
+        window.__MK_CURRENT_URL = (item?.url || item?.source_url || "").toString().trim();
+        window.__MK_CURRENT_MODEL = (item?.analysis_model || item?.model || "").toString().trim();
+        window.__MK_CURRENT_ANALYSIS = txt;
+      
+        // 3) initiera feedback om analys finns (annars göm)
+        const fb = document.querySelector('[data-mk="analysis_feedback"]');
+        if (fb) fb.style.display = txt ? "" : "none";
+      
+        if (txt && typeof window.MK_initAnalysisFeedback === "function") {
+          window.MK_initAnalysisFeedback();
+        }
       }
+
     
       renderModalChips(item);
     
@@ -1981,6 +1999,7 @@ function renderModalChips(item) {
     }
   })();
 })();
+
 
 
 
