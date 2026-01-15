@@ -953,7 +953,7 @@ function renderModalChips(item) {
     
       if (modalTimeEl) {
         const t = fmtTimeLeft(item?.auction_ends_at);
-        modalTimeEl.textContent = t ? t.toLowerCase() + " kvar" : "—";
+        modalTimeEl.textContent = t ? t.toLowerCase() + "" : "—";
       }
     
       if (modalSourceEl) modalSourceEl.textContent = (item?.source ? String(item.source).toUpperCase() : "—");
@@ -2004,6 +2004,7 @@ function renderModalChips(item) {
     }
   })();
 })();
+
 
 
 
