@@ -1593,6 +1593,24 @@ function renderModalChips(item) {
 
 
 
+    function openFromUrlOnce() {
+      const u = new URL(location.href);
+      const openId = u.searchParams.get("open");
+      if (!openId) return;
+    
+      const item = itemById.get(String(openId));
+      if (!item) return;
+    
+      requestAnimationFrame(() => openModal(item));
+    
+      // ta bort param så refresh/back inte öppnar igen
+      u.searchParams.delete("open");
+      history.replaceState({}, "", u.toString());
+    }
+    
+
+
+
 
 
 
@@ -1621,6 +1639,7 @@ function renderModalChips(item) {
     if (boot?.subSlug) currentSubcat = slugifySv(boot.subSlug);
 
     apply();
+    openFromUrlOnce(); // ✅ Öppnar modal om ?open=ID finns
 
     window.addEventListener("mk:filters-changed", (e) => {
       const d = e?.detail || {};
