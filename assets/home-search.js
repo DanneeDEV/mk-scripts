@@ -5,7 +5,7 @@
   const MAX_RESULTS = 5;
   const MIN_CHARS = 2;
   const DEBOUNCE_MS = 90;
-  const SEARCH_PAGE_URL = "/search";
+  const SEARCH_PAGE_URL = "/sok";
 
   const qs = (s, r=document) => r.querySelector(s);
   const qsa = (s, r=document) => [...r.querySelectorAll(s)];
