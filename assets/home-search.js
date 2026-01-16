@@ -72,9 +72,17 @@
     // Mät efter DOM har renderats
     const padY = getPadY(panel);
     const listH = list ? getListVisibleHeight(list) : 0;
-    const footerH = footer ? footer.offsetHeight : 0;
+    let footerH = 0;
+    if (footer){
+      const fcs = getComputedStyle(footer);
+      const mt = parseFloat(fcs.marginTop) || 0;
+      const mb = parseFloat(fcs.marginBottom) || 0;
+      footerH = footer.offsetHeight + mt + mb;
+    }
 
-    const target = padY + listH + footerH + 6; // liten buffert
+
+    const target = padY + listH + footerH; // ingen buffert
+
     panel.setAttribute("data-open","1");
     panel.style.height = px(target);
   }
