@@ -201,6 +201,8 @@
     const tpl   = qs('[data-mk="search_item_tpl"]');
     const footer= qs('[data-mk="search_show_all"]');
     const footerLbl = qs('[data-mk="search_show_all_label"]');
+    const footerChevron = qs('[data-mk="search_show_all_chevron"]');
+
 
     if (!input || !panel || !list || !tpl){
       console.warn("[MK search] saknar data-mk hooks (input/panel/list/tpl)");
@@ -222,13 +224,17 @@
 
       const qq = String(q || "").trim();
 
+      if (footerChevron) footerChevron.style.display = "";
+
       if (!qq){
         footerLbl.textContent = "Skriv för att söka";
+        if (footerChevron) footerChevron.style.display = "none";
         return;
       }
 
       if (count === 0){
         footerLbl.textContent = "Inga annonser hittades";
+        if (footerChevron) footerChevron.style.display = "none";
         return;
       }
 
@@ -261,6 +267,22 @@
       updateFooter(q, null);
       if (q.length >= MIN_CHARS){
         requestAnimationFrame(() => setPanelHeight(panel, list, footer, true));
+      }
+    });
+
+    // ✅ Stoppa form-submit på Enter (Webflow form)  <-- LIGGER HÄR, INTE I focus
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+    
+      e.preventDefault();
+      e.stopPropagation();
+    
+      const q = String(input.value || "").trim();
+    
+      if (q.length >= MIN_CHARS){
+        goToSearch(q, null);
+      } else {
+        setPanelHeight(panel, list, footer, false);
       }
     });
 
