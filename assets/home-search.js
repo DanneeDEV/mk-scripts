@@ -1,7 +1,4 @@
 (() => {
-  // =========================
-  // CONFIG
-  // =========================
   const SNAPSHOT_URL =
     "https://rjndhhdwmmonsrniunhc.supabase.co/storage/v1/object/public/snapshots/search/search-index.v1.json";
 
@@ -11,21 +8,16 @@
 
   const SEARCH_PAGE_URL = "/search";
 
-  // =========================
-  // HELPERS
-  // =========================
   const qs = (s, r = document) => r.querySelector(s);
   const qsa = (s, r = document) => [...r.querySelectorAll(s)];
 
-  const isBad = (v) =>
-    v == null || String(v).trim() === "" || String(v).trim() === "—";
+  const isBad = (v) => v == null || String(v).trim() === "" || String(v).trim() === "—";
 
   const fmtPrice = (p) => {
     const n = Number(p);
     return Number.isFinite(n) && n > 0 ? `${n.toLocaleString("sv-SE")} kr` : "—";
   };
 
-  // “åäö” → aao + lowercase
   const fold = (s) =>
     String(s || "")
       .toLowerCase()
@@ -53,30 +45,54 @@
 
   function setBg(el, url) {
     if (!el) return;
-    if (!url) {
-      el.style.backgroundImage = "";
-      return;
-    }
+    if (!url) { el.style.backgroundImage = ""; return; }
     el.style.backgroundImage = `url("${url}")`;
     el.style.backgroundSize = "cover";
     el.style.backgroundPosition = "center";
     el.style.backgroundRepeat = "no-repeat";
   }
 
-  // ✅ Dynamisk höjd (så panelen inte blir ett streck i published)
-  function openPanel(panel) {
+  // Läs max-height från CSS (t.ex. 420px)
+  function getMaxPx(el) {
+    const mh = getComputedStyle(el).maxHeight;
+    const n = parseFloat(mh);
+    return Number.isFinite(n) ? n : Infinity;
+  }
+
+  function calcOpenMaxHeight(panel, list, footer) {
+    // panel padding
+    const cs = getComputedStyle(panel);
+    const pt = parseFloat(cs.paddingTop) || 0;
+    const pb = parseFloat(cs.paddingBottom) || 0;
+
+    // list synliga höjd = min(scrollHeight, max-height)
+    const listMax = getMaxPx(list);
+    const listVisible = Math.min(list.scrollHeight, listMax);
+
+    const footerH = footer ? footer.offsetHeight : 0;
+
+    // + en liten buffert (typ borders/gap)
+    return Math.ceil(pt + listVisible + footerH + pb + 6);
+  }
+
+  function openPanel(panel, list, footer) {
     if (!panel) return;
+
+    // 🚑 Webflow kan ha satt en inline height -> döda den
+    panel.style.removeProperty("height");
+    panel.style.height = "auto";
+
     panel.setAttribute("data-open", "1");
 
-    // nolla först
+    // nolla först så transition triggas
     panel.style.maxHeight = "0px";
 
     requestAnimationFrame(() => {
-      // tvinga reflow (Webflow kan vara weird)
+      // tvinga layout
       panel.getBoundingClientRect();
 
-      const h = panel.scrollHeight;
-      panel.style.maxHeight = h + "px";
+      const h = calcOpenMaxHeight(panel, list, footer);
+      panel.style.maxHeight = `${h}px`;
     });
   }
 
@@ -91,7 +107,7 @@
   // =========================
   const SS_KEY = "mk_search_index_v1";
   const SS_TS = "mk_search_index_v1_ts";
-  const SS_TTL = 8 * 60 * 1000; // 8 min
+  const SS_TTL = 8 * 60 * 1000;
 
   async function loadIndex() {
     try {
@@ -162,9 +178,7 @@
   // =========================
   function clearList(list, tpl) {
     if (!list) return;
-
     qsa('[data-mk="search_item"]', list).forEach((n) => n.remove());
-
     if (tpl) tpl.style.display = "none";
   }
 
@@ -184,10 +198,7 @@
       setText(qs('[data-mk="search_title"]', node), it.title);
       setText(qs('[data-mk="search_location"]', node), it.location);
       setText(qs('[data-mk="search_price"]', node), fmtPrice(it.price));
-      setText(
-        qs('[data-mk="search_source"]', node),
-        String(it.source || "").toUpperCase() || "—"
-      );
+      setText(qs('[data-mk="search_source"]', node), String(it.source || "").toUpperCase() || "—");
 
       list.appendChild(node);
     }
@@ -216,20 +227,15 @@
       return;
     }
 
-    // Template: alltid gömd
     tpl.style.display = "none";
-
-    // Start: stäng panel
     closePanel(panel);
 
     const allItems = await loadIndex();
-    window.__MK_SEARCH_INDEX = allItems; // debug
+    window.__MK_SEARCH_INDEX = allItems;
 
     const updateShowAll = (q) => {
       if (!showAllLbl) return;
-      showAllLbl.textContent = q
-        ? `Visa alla resultat för '${q}'`
-        : `Visa alla resultat`;
+      showAllLbl.textContent = q ? `Visa alla resultat för '${q}'` : `Visa alla resultat`;
     };
 
     const run = debounce((raw) => {
@@ -245,8 +251,8 @@
       const hits = topMatches(allItems, query);
       render(list, tpl, hits);
 
-      // ✅ öppna EFTER render (så scrollHeight blir korrekt)
-      requestAnimationFrame(() => openPanel(panel));
+      // öppna efter render (så höjd blir korrekt)
+      requestAnimationFrame(() => openPanel(panel, list, showAll));
     }, DEBOUNCE_MS);
 
     input.addEventListener("input", (e) => run(e.target.value));
@@ -254,13 +260,9 @@
     input.addEventListener("focus", () => {
       const q = String(input.value || "").trim();
       updateShowAll(q);
-      if (q.length >= MIN_CHARS) {
-        // om det redan finns items renderade kan den öppnas direkt
-        requestAnimationFrame(() => openPanel(panel));
-      }
+      if (q.length >= MIN_CHARS) requestAnimationFrame(() => openPanel(panel, list, showAll));
     });
 
-    // Klick på rad → söksida
     document.addEventListener("click", (e) => {
       const row = e.target.closest('[data-mk="search_item"][data-id]');
       if (!row) return;
@@ -273,7 +275,6 @@
       goToSearch(q, id);
     });
 
-    // “Visa alla”
     if (showAll) {
       showAll.addEventListener("click", (e) => {
         e.preventDefault();
@@ -283,14 +284,12 @@
       });
     }
 
-    // Klick utanför → stäng
     document.addEventListener("click", (e) => {
       if (e.target.closest('[data-mk="search_panel"]')) return;
       if (e.target.closest('[data-mk="search_input"]')) return;
       closePanel(panel);
     });
 
-    // ESC → stäng
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closePanel(panel);
     });
@@ -302,3 +301,4 @@
     init();
   }
 })();
+
