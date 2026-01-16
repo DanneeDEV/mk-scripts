@@ -49,7 +49,6 @@
   }
 
   function getListVisibleHeight(list){
-    // Om du har max-height på listan -> använd det som cap
     const cs = getComputedStyle(list);
     const mh = parseFloat(cs.maxHeight);
     const cap = Number.isFinite(mh) ? mh : Infinity;
@@ -59,8 +58,7 @@
   function setPanelHeight(panel, list, footer, open){
     if (!panel) return;
 
-    // Döda Webflow inline “height: 1px” osv
-    panel.style.removeProperty("max-height"); // vi använder inte den längre
+    panel.style.removeProperty("max-height");
     panel.style.removeProperty("min-height");
 
     if (!open){
@@ -69,9 +67,9 @@
       return;
     }
 
-    // Mät efter DOM har renderats
     const padY = getPadY(panel);
     const listH = list ? getListVisibleHeight(list) : 0;
+
     let footerH = 0;
     if (footer){
       const fcs = getComputedStyle(footer);
@@ -80,8 +78,7 @@
       footerH = footer.offsetHeight + mt + mb;
     }
 
-
-    const target = padY + listH + footerH; // ingen buffert
+    const target = padY + listH + footerH; // tight
 
     panel.setAttribute("data-open","1");
     panel.style.height = px(target);
@@ -212,23 +209,37 @@
 
     tpl.style.display="none";
 
-    // Start closed (height=0)
-    panel.style.transition = panel.style.transition || ""; // rör inte din styling
+    // Start closed
+    panel.style.transition = panel.style.transition || "";
     setPanelHeight(panel, list, footer, false);
 
     const allItems = await loadIndex();
     window.__MK_SEARCH_INDEX = allItems;
 
-    const updateFooter = (q) => {
+    // ✅ enkel footer-text
+    const updateFooter = (q, count=null) => {
       if (!footerLbl) return;
-      footerLbl.textContent = q ? `Visa alla resultat för '${q}'` : `Visa alla resultat`;
+
+      const qq = String(q || "").trim();
+
+      if (!qq){
+        footerLbl.textContent = "Skriv för att söka";
+        return;
+      }
+
+      if (count === 0){
+        footerLbl.textContent = "Inga annonser hittades";
+        return;
+      }
+
+      footerLbl.textContent = `Visa alla resultat för '${qq}'`;
     };
 
     const run = debounce((raw) => {
       const q = String(raw||"").trim();
-      updateFooter(q);
 
       if (q.length < MIN_CHARS){
+        updateFooter(q, null);
         clearList(list, tpl);
         setPanelHeight(panel, list, footer, false);
         return;
@@ -237,7 +248,9 @@
       const hits = topMatches(allItems, q);
       render(list, tpl, hits);
 
-      // öppna efter render → mät → sätt height
+      // ✅ här skickar vi count så "inga annonser hittades" funkar
+      updateFooter(q, hits.length);
+
       requestAnimationFrame(() => setPanelHeight(panel, list, footer, true));
     }, DEBOUNCE_MS);
 
@@ -245,7 +258,7 @@
 
     input.addEventListener("focus", () => {
       const q = String(input.value||"").trim();
-      updateFooter(q);
+      updateFooter(q, null);
       if (q.length >= MIN_CHARS){
         requestAnimationFrame(() => setPanelHeight(panel, list, footer, true));
       }
@@ -280,7 +293,6 @@
       if (e.key === "Escape") setPanelHeight(panel, list, footer, false);
     });
 
-    // Recalc vid resize (så inte height blir fel)
     window.addEventListener("resize", debounce(() => {
       if (panel.getAttribute("data-open") === "1"){
         setPanelHeight(panel, list, footer, true);
