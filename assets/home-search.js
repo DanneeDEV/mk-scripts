@@ -5,15 +5,11 @@
   const SNAPSHOT_URL =
     "https://rjndhhdwmmonsrniunhc.supabase.co/storage/v1/object/public/snapshots/search/search-index.v1.json";
 
-  const MAX_RESULTS = 5;        // ✅ bara 5
+  const MAX_RESULTS = 5;     // ✅ du ville ha 5
   const MIN_CHARS = 2;
   const DEBOUNCE_MS = 90;
 
-  // Vart ska vi skicka användaren vid klick / “visa alla”?
   const SEARCH_PAGE_URL = "/search";
-
-  // ✅ maxhöjd för listan (scroll efter detta)
-  const LIST_MAX_PX = 420;
 
   // =========================
   // HELPERS
@@ -21,23 +17,18 @@
   const qs = (s, r = document) => r.querySelector(s);
   const qsa = (s, r = document) => [...r.querySelectorAll(s)];
 
-  const isBad = (v) =>
-    v == null || String(v).trim() === "" || String(v).trim() === "—";
+  const isBad = (v) => v == null || String(v).trim() === "" || String(v).trim() === "—";
 
   const fmtPrice = (p) => {
     const n = Number(p);
     return Number.isFinite(n) && n > 0 ? `${n.toLocaleString("sv-SE")} kr` : "—";
   };
 
-  // “åäö” → aao, + lowercase, + bort extra
   const fold = (s) =>
     String(s || "")
       .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/å/g, "a")
-      .replace(/ä/g, "a")
-      .replace(/ö/g, "o")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/å/g, "a").replace(/ä/g, "a").replace(/ö/g, "o")
       .replace(/[^a-z0-9\s\-]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -51,7 +42,8 @@
   }
 
   function safeText(el, v) {
-    if (el) el.textContent = isBad(v) ? "—" : String(v);
+    if (!el) return;
+    el.textContent = isBad(v) ? "—" : String(v);
   }
 
   function safeBg(el, url) {
@@ -66,43 +58,31 @@
     el.style.backgroundRepeat = "no-repeat";
   }
 
-  function openPanel(panel) {
+  // ✅ Vinn över inline styles från Webflow
+  function forceShow(panel) {
     if (!panel) return;
-    panel.style.display = "";
+    panel.style.setProperty("display", "block", "important");
+    panel.style.setProperty("visibility", "visible", "important");
+    panel.style.setProperty("opacity", "1", "important");
+    panel.style.setProperty("pointer-events", "auto", "important");
     panel.setAttribute("data-open", "1");
   }
 
-  function closePanel(panel) {
+  function forceHide(panel) {
     if (!panel) return;
+    // ❗️vi gömmer utan display:none så blur + layout inte dör
+    panel.style.setProperty("visibility", "hidden", "important");
+    panel.style.setProperty("opacity", "0", "important");
+    panel.style.setProperty("pointer-events", "none", "important");
     panel.setAttribute("data-open", "0");
-    panel.style.display = "none";
   }
 
-  // ✅ lista scroll + dynamisk max-height
-  function setListHeight(listEl, count) {
-    if (!listEl) return;
-
-    // alltid scrollbart, men klipp vid max
-    listEl.style.overflowY = "auto";
-    listEl.style.overflowX = "hidden";
-
-    // försök räkna verklig höjd av synliga items
-    const items = [...listEl.querySelectorAll('[data-mk="search_item"]')];
-    let h = 0;
-
-    for (let i = 0; i < items.length && i < count; i++) {
-      const r = items[i].getBoundingClientRect();
-      h += r.height || 0;
-    }
-
-    // fallback om getBoundingClientRect inte ger höjd direkt (t.ex. första paint)
-    if (!h) {
-      listEl.style.maxHeight = `${Math.min(LIST_MAX_PX, 360)}px`;
-      return;
-    }
-
-    const px = Math.min(Math.ceil(h), LIST_MAX_PX);
-    listEl.style.maxHeight = `${px}px`;
+  function ensureListScroll(list) {
+    if (!list) return;
+    // du har redan max-height inline, men vi säkrar den här
+    list.style.setProperty("overflow-y", "auto", "important");
+    list.style.setProperty("overflow-x", "hidden", "important");
+    list.style.setProperty("max-height", "420px", "important");
   }
 
   // =========================
@@ -136,7 +116,7 @@
   }
 
   // =========================
-  // SEARCH + RENDER
+  // SEARCH + RANK
   // =========================
   function scoreItem(q, it) {
     const t = fold(it.title);
@@ -147,7 +127,6 @@
     const cs = fold(it.category_sub);
 
     let s = 0;
-
     if (t.startsWith(q)) s += 80;
     if (t.includes(q)) s += 60;
 
@@ -173,7 +152,6 @@
       if (sc > 0) scored.push({ it, sc });
     }
     scored.sort((a, b) => b.sc - a.sc);
-
     return scored.slice(0, MAX_RESULTS).map((x) => x.it);
   }
 
@@ -187,12 +165,13 @@
     clearList(list, tpl);
     if (!list || !tpl) return;
 
-    items.forEach((it) => {
+    for (const it of items) {
       const node = tpl.cloneNode(true);
-      node.style.display = "";
+      node.style.display = ""; // synlig
       node.classList.remove("is-template");
+
       node.setAttribute("data-mk", "search_item");
-      node.dataset.id = String(it.id);
+      node.setAttribute("data-id", String(it.id));
 
       safeBg(qs('[data-mk="search_img"]', node), it.imageUrl);
       safeText(qs('[data-mk="search_title"]', node), it.title);
@@ -204,11 +183,7 @@
       );
 
       list.appendChild(node);
-    });
-
-    // ✅ efter render: sätt max-height så 5 rader syns (eller färre om färre hits)
-    // kör i nästa frame så layout hunnit uppdateras
-    requestAnimationFrame(() => setListHeight(list, Math.min(items.length, MAX_RESULTS)));
+    }
   }
 
   function goToSearch(query, openId = null) {
@@ -234,14 +209,15 @@
       return;
     }
 
-    closePanel(panel);
+    // ✅ panel måste inte vara display:none i drift – vi tar kontroll direkt
+    panel.style.setProperty("display", "block", "important");
+    ensureListScroll(list);
+
+    // template ska alltid vara gömd
     tpl.style.display = "none";
 
-    // ✅ se till att listan aldrig påverkar blur på panelen:
-    // panelen kan ha overflow hidden för blur, listan får scroll.
-    list.style.overflowY = "auto";
-    list.style.overflowX = "hidden";
-    list.style.maxHeight = `${LIST_MAX_PX}px`;
+    // start: stäng (utan display none)
+    forceHide(panel);
 
     const allItems = await loadIndex();
     window.__MK_SEARCH_INDEX = allItems;
@@ -259,7 +235,7 @@
 
       if (query.length < MIN_CHARS) {
         clearList(list, tpl);
-        closePanel(panel);
+        forceHide(panel);
         return;
       }
 
@@ -267,12 +243,13 @@
 
       if (!hits.length) {
         clearList(list, tpl);
-        closePanel(panel);
+        // visa panel ändå (du kan välja hide om du vill)
+        forceShow(panel);
         return;
       }
 
       render(list, tpl, hits);
-      openPanel(panel);
+      forceShow(panel);
     }, DEBOUNCE_MS);
 
     input.addEventListener("input", (e) => doSearch(e.target.value));
@@ -280,10 +257,10 @@
     input.addEventListener("focus", () => {
       const q = String(input.value || "").trim();
       updateShowAll(q);
-      if (q.length >= MIN_CHARS) doSearch(q);
+      if (q.length >= MIN_CHARS) forceShow(panel);
     });
 
-    // Klick på resultat → till söksida med open=id
+    // Klick på rad -> söksida (du kan senare öppna modal där)
     document.addEventListener("click", (e) => {
       const row = e.target.closest('[data-mk="search_item"][data-id]');
       if (!row) return;
@@ -296,7 +273,7 @@
       goToSearch(q, id);
     });
 
-    // “Visa alla”
+    // Visa alla
     if (showAll) {
       showAll.addEventListener("click", (e) => {
         e.preventDefault();
@@ -306,16 +283,16 @@
       });
     }
 
-    // Klick utanför → stäng
+    // Klick utanför stänger
     document.addEventListener("click", (e) => {
       if (e.target.closest('[data-mk="search_panel"]')) return;
       if (e.target.closest('[data-mk="search_input"]')) return;
-      closePanel(panel);
+      forceHide(panel);
     });
 
-    // ESC → stäng
+    // ESC stänger
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closePanel(panel);
+      if (e.key === "Escape") forceHide(panel);
     });
   }
 
@@ -325,4 +302,5 @@
     init();
   }
 })();
+
 
