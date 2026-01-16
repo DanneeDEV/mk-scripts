@@ -38,6 +38,16 @@
       .replace(/^-|-$/g, "");
   }
 
+
+
+  function setInputAndTrigger(el, value) {
+    if (!el) return;
+    el.value = value ?? "";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+
   const fmtInt = (n) => Number.isFinite(+n) ? (+n).toLocaleString("sv-SE") : null;
 
   // Uppdatera träffar (stöd båda dina hooks)
@@ -512,23 +522,32 @@
     function wireSearch() {
       const input = getSearchInput();
       if (!input) return;
-      if (state.q && !input.value) input.value = state.q;
-
-
-      preventWebflowFormSubmit(input);
-
+    
+      // ✅ bind-skydd först
       if (input.dataset.mkBound === "1") return;
       input.dataset.mkBound = "1";
-
+    
+      // ✅ stoppa Webflow submit EN gång
+      preventWebflowFormSubmit(input);
+    
       const onInput = debounce(() => {
         state.q = input.value || "";
         setActiveCountUI();
         emitChanged();
       }, 120);
-
+    
       input.addEventListener("input", onInput);
       input.addEventListener("change", onInput);
+    
+      // ✅ nu: sätt initialt värde och trigga när listeners finns
+      if (state.q && !input.value) {
+        setInputAndTrigger(input, state.q);
+      } else {
+        // säkerställ att UI syncar om input redan har värde
+        onInput();
+      }
     }
+
 
     function wireEndsIn() {
       const btns = qsa('[data-mk="endsin_btn"]');
@@ -613,7 +632,8 @@
         state.q = "";
 
         const sInput = getSearchInput();
-        if (sInput) sInput.value = "";
+        setInputAndTrigger(sInput, "");
+
 
         setInputValue('[data-mk="price_min"]', "");
         setInputValue('[data-mk="price_max"]', "");
@@ -1071,8 +1091,7 @@ function renderModalChips(item) {
         // allow ctrl/cmd/middle click to behave normally
         if (e.ctrlKey || e.metaKey || e.button === 1) return;
     
-        // allow ctrl/cmd/middle click
-        if (e.ctrlKey || e.metaKey || e.button === 1) return;
+   
         
         // 👇 om du vill: låt bara “öppna extern länk”-ikonen funka som vanlig länk
         const a = e.target.closest("a");
@@ -1968,10 +1987,10 @@ function renderModalChips(item) {
         await new Promise(r => document.addEventListener("DOMContentLoaded", r, { once: true }));
       }
   
-      // ✅ Sätt snygg titel för söksidan
       const boot = await window.__MK_SEARCH_BOOT;
       const q = (boot?.q || "").trim();
   
+      // ✅ Sätt snygg titel för söksidan
       const h1 = qs('[data-mk="cat_title"]') || qs("h1");
       if (h1) h1.textContent = q ? `Sökresultat för “${q}”` : "Sök";
   
@@ -1984,10 +2003,17 @@ function renderModalChips(item) {
       await initFilters();
       window.__MK_FADE?.readyOne?.(".mk-filter-panel[data-mk-fade]");
   
+      // ✅ Om vi har q i URL: trigga input/change så filtrering kör direkt
+      const input = getSearchInput?.();
+      if (input && q) {
+        input.value = q;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+  
       await initCards();
       window.__MK_FADE?.readyOne?.('[data-mk="cards_grid"][data-mk-fade]');
   
-      // (valfritt) hits-fade om du har den på sidan
       window.__MK_FADE?.readyOne?.('[data-mk="hits"][data-mk-fade]');
   
       console.log("[MK-SEARCH] all modules ready");
@@ -1995,6 +2021,7 @@ function renderModalChips(item) {
       console.error("[MK-SEARCH] failed:", e);
     }
   })();
+
 
 })();
 
