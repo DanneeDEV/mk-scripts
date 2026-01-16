@@ -5,7 +5,7 @@
   const SNAPSHOT_URL =
     "https://rjndhhdwmmonsrniunhc.supabase.co/storage/v1/object/public/snapshots/search/search-index.v1.json";
 
-  const MAX_RESULTS = 5;     // ✅ du ville ha 5
+  const MAX_RESULTS = 5;
   const MIN_CHARS = 2;
   const DEBOUNCE_MS = 90;
 
@@ -17,18 +17,23 @@
   const qs = (s, r = document) => r.querySelector(s);
   const qsa = (s, r = document) => [...r.querySelectorAll(s)];
 
-  const isBad = (v) => v == null || String(v).trim() === "" || String(v).trim() === "—";
+  const isBad = (v) =>
+    v == null || String(v).trim() === "" || String(v).trim() === "—";
 
   const fmtPrice = (p) => {
     const n = Number(p);
     return Number.isFinite(n) && n > 0 ? `${n.toLocaleString("sv-SE")} kr` : "—";
   };
 
+  // “åäö” → aao, + lowercase, + bort extra
   const fold = (s) =>
     String(s || "")
       .toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .replace(/å/g, "a").replace(/ä/g, "a").replace(/ö/g, "o")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/å/g, "a")
+      .replace(/ä/g, "a")
+      .replace(/ö/g, "o")
       .replace(/[^a-z0-9\s\-]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -41,12 +46,12 @@
     };
   }
 
-  function safeText(el, v) {
+  function setText(el, v) {
     if (!el) return;
     el.textContent = isBad(v) ? "—" : String(v);
   }
 
-  function safeBg(el, url) {
+  function setBg(el, url) {
     if (!el) return;
     if (!url) {
       el.style.backgroundImage = "";
@@ -58,35 +63,18 @@
     el.style.backgroundRepeat = "no-repeat";
   }
 
-  // ✅ Vinn över inline styles från Webflow
-  function forceShow(panel) {
+  function openPanel(panel) {
     if (!panel) return;
-    panel.style.setProperty("display", "block", "important");
-    panel.style.setProperty("visibility", "visible", "important");
-    panel.style.setProperty("opacity", "1", "important");
-    panel.style.setProperty("pointer-events", "auto", "important");
     panel.setAttribute("data-open", "1");
   }
 
-  function forceHide(panel) {
+  function closePanel(panel) {
     if (!panel) return;
-    // ❗️vi gömmer utan display:none så blur + layout inte dör
-    panel.style.setProperty("visibility", "hidden", "important");
-    panel.style.setProperty("opacity", "0", "important");
-    panel.style.setProperty("pointer-events", "none", "important");
     panel.setAttribute("data-open", "0");
   }
 
-  function ensureListScroll(list) {
-    if (!list) return;
-    // du har redan max-height inline, men vi säkrar den här
-    list.style.setProperty("overflow-y", "auto", "important");
-    list.style.setProperty("overflow-x", "hidden", "important");
-    list.style.setProperty("max-height", "420px", "important");
-  }
-
   // =========================
-  // LOAD SNAPSHOT (cache i sessionStorage)
+  // LOAD SNAPSHOT (session cache)
   // =========================
   const SS_KEY = "mk_search_index_v1";
   const SS_TS = "mk_search_index_v1_ts";
@@ -151,13 +139,22 @@
       const sc = scoreItem(q, it);
       if (sc > 0) scored.push({ it, sc });
     }
+
     scored.sort((a, b) => b.sc - a.sc);
     return scored.slice(0, MAX_RESULTS).map((x) => x.it);
   }
 
+  // =========================
+  // RENDER
+  // =========================
   function clearList(list, tpl) {
     if (!list) return;
-    qsa('[data-mk="search_item"]', list).forEach((n) => n.remove());
+
+    // ta bort alla som INTE är templaten
+    qsa('[data-mk="search_item"]', list).forEach((n) => {
+      if (n !== tpl) n.remove();
+    });
+
     if (tpl) tpl.style.display = "none";
   }
 
@@ -167,17 +164,17 @@
 
     for (const it of items) {
       const node = tpl.cloneNode(true);
-      node.style.display = ""; // synlig
-      node.classList.remove("is-template");
 
+      node.style.display = "";
+      node.classList.remove("is-template");
       node.setAttribute("data-mk", "search_item");
       node.setAttribute("data-id", String(it.id));
 
-      safeBg(qs('[data-mk="search_img"]', node), it.imageUrl);
-      safeText(qs('[data-mk="search_title"]', node), it.title);
-      safeText(qs('[data-mk="search_location"]', node), it.location);
-      safeText(qs('[data-mk="search_price"]', node), fmtPrice(it.price));
-      safeText(
+      setBg(qs('[data-mk="search_img"]', node), it.imageUrl);
+      setText(qs('[data-mk="search_title"]', node), it.title);
+      setText(qs('[data-mk="search_location"]', node), it.location);
+      setText(qs('[data-mk="search_price"]', node), fmtPrice(it.price));
+      setText(
         qs('[data-mk="search_source"]', node),
         String(it.source || "").toUpperCase() || "—"
       );
@@ -209,18 +206,14 @@
       return;
     }
 
-    // ✅ panel måste inte vara display:none i drift – vi tar kontroll direkt
-    panel.style.setProperty("display", "block", "important");
-    ensureListScroll(list);
-
-    // template ska alltid vara gömd
+    // Template: alltid gömd
     tpl.style.display = "none";
 
-    // start: stäng (utan display none)
-    forceHide(panel);
+    // Start: stäng panel
+    closePanel(panel);
 
     const allItems = await loadIndex();
-    window.__MK_SEARCH_INDEX = allItems;
+    window.__MK_SEARCH_INDEX = allItems; // debug
 
     const updateShowAll = (q) => {
       if (!showAllLbl) return;
@@ -229,38 +222,30 @@
         : `Visa alla resultat`;
     };
 
-    const doSearch = debounce((q) => {
-      const query = String(q || "").trim();
+    const run = debounce((raw) => {
+      const query = String(raw || "").trim();
       updateShowAll(query);
 
       if (query.length < MIN_CHARS) {
         clearList(list, tpl);
-        forceHide(panel);
+        closePanel(panel);
         return;
       }
 
       const hits = topMatches(allItems, query);
-
-      if (!hits.length) {
-        clearList(list, tpl);
-        // visa panel ändå (du kan välja hide om du vill)
-        forceShow(panel);
-        return;
-      }
-
       render(list, tpl, hits);
-      forceShow(panel);
+      openPanel(panel);
     }, DEBOUNCE_MS);
 
-    input.addEventListener("input", (e) => doSearch(e.target.value));
+    input.addEventListener("input", (e) => run(e.target.value));
 
     input.addEventListener("focus", () => {
       const q = String(input.value || "").trim();
       updateShowAll(q);
-      if (q.length >= MIN_CHARS) forceShow(panel);
+      if (q.length >= MIN_CHARS) openPanel(panel);
     });
 
-    // Klick på rad -> söksida (du kan senare öppna modal där)
+    // Klick på resultat → söksida med open=id
     document.addEventListener("click", (e) => {
       const row = e.target.closest('[data-mk="search_item"][data-id]');
       if (!row) return;
@@ -273,7 +258,7 @@
       goToSearch(q, id);
     });
 
-    // Visa alla
+    // “Visa alla”
     if (showAll) {
       showAll.addEventListener("click", (e) => {
         e.preventDefault();
@@ -283,16 +268,16 @@
       });
     }
 
-    // Klick utanför stänger
+    // Klick utanför → stäng
     document.addEventListener("click", (e) => {
       if (e.target.closest('[data-mk="search_panel"]')) return;
       if (e.target.closest('[data-mk="search_input"]')) return;
-      forceHide(panel);
+      closePanel(panel);
     });
 
-    // ESC stänger
+    // ESC → stäng
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") forceHide(panel);
+      if (e.key === "Escape") closePanel(panel);
     });
   }
 
@@ -302,5 +287,6 @@
     init();
   }
 })();
+
 
 
