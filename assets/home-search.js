@@ -1,4 +1,3 @@
-
 (() => {
   // =========================
   // CONFIG
@@ -6,21 +5,24 @@
   const SNAPSHOT_URL =
     "https://rjndhhdwmmonsrniunhc.supabase.co/storage/v1/object/public/snapshots/search/search-index.v1.json";
 
-  const MAX_RESULTS = 6;
+  const MAX_RESULTS = 5;        // ✅ bara 5
   const MIN_CHARS = 2;
   const DEBOUNCE_MS = 90;
 
   // Vart ska vi skicka användaren vid klick / “visa alla”?
-  // Byt till din riktiga söksida.
   const SEARCH_PAGE_URL = "/search";
+
+  // ✅ maxhöjd för listan (scroll efter detta)
+  const LIST_MAX_PX = 420;
 
   // =========================
   // HELPERS
   // =========================
-  const qs = (s, r=document) => r.querySelector(s);
-  const qsa = (s, r=document) => [...r.querySelectorAll(s)];
+  const qs = (s, r = document) => r.querySelector(s);
+  const qsa = (s, r = document) => [...r.querySelectorAll(s)];
 
-  const isBad = (v) => v == null || String(v).trim() === "" || String(v).trim() === "—";
+  const isBad = (v) =>
+    v == null || String(v).trim() === "" || String(v).trim() === "—";
 
   const fmtPrice = (p) => {
     const n = Number(p);
@@ -31,8 +33,11 @@
   const fold = (s) =>
     String(s || "")
       .toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // diacritics
-      .replace(/å/g, "a").replace(/ä/g, "a").replace(/ö/g, "o")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/å/g, "a")
+      .replace(/ä/g, "a")
+      .replace(/ö/g, "o")
       .replace(/[^a-z0-9\s\-]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -45,10 +50,16 @@
     };
   }
 
-  function safeText(el, v) { if (el) el.textContent = isBad(v) ? "—" : String(v); }
+  function safeText(el, v) {
+    if (el) el.textContent = isBad(v) ? "—" : String(v);
+  }
+
   function safeBg(el, url) {
     if (!el) return;
-    if (!url) { el.style.backgroundImage = ""; return; }
+    if (!url) {
+      el.style.backgroundImage = "";
+      return;
+    }
     el.style.backgroundImage = `url("${url}")`;
     el.style.backgroundSize = "cover";
     el.style.backgroundPosition = "center";
@@ -67,11 +78,38 @@
     panel.style.display = "none";
   }
 
+  // ✅ lista scroll + dynamisk max-height
+  function setListHeight(listEl, count) {
+    if (!listEl) return;
+
+    // alltid scrollbart, men klipp vid max
+    listEl.style.overflowY = "auto";
+    listEl.style.overflowX = "hidden";
+
+    // försök räkna verklig höjd av synliga items
+    const items = [...listEl.querySelectorAll('[data-mk="search_item"]')];
+    let h = 0;
+
+    for (let i = 0; i < items.length && i < count; i++) {
+      const r = items[i].getBoundingClientRect();
+      h += r.height || 0;
+    }
+
+    // fallback om getBoundingClientRect inte ger höjd direkt (t.ex. första paint)
+    if (!h) {
+      listEl.style.maxHeight = `${Math.min(LIST_MAX_PX, 360)}px`;
+      return;
+    }
+
+    const px = Math.min(Math.ceil(h), LIST_MAX_PX);
+    listEl.style.maxHeight = `${px}px`;
+  }
+
   // =========================
   // LOAD SNAPSHOT (cache i sessionStorage)
   // =========================
   const SS_KEY = "mk_search_index_v1";
-  const SS_TS  = "mk_search_index_v1_ts";
+  const SS_TS = "mk_search_index_v1_ts";
   const SS_TTL = 8 * 60 * 1000; // 8 min
 
   async function loadIndex() {
@@ -101,7 +139,6 @@
   // SEARCH + RENDER
   // =========================
   function scoreItem(q, it) {
-    // super-enkel ranking: title viktigast, sen brand/model, sen location/cat
     const t = fold(it.title);
     const b = fold(it.brand);
     const m = fold(it.model);
@@ -110,6 +147,7 @@
     const cs = fold(it.category_sub);
 
     let s = 0;
+
     if (t.startsWith(q)) s += 80;
     if (t.includes(q)) s += 60;
 
@@ -134,15 +172,14 @@
       const sc = scoreItem(q, it);
       if (sc > 0) scored.push({ it, sc });
     }
-    scored.sort((a,b) => b.sc - a.sc);
+    scored.sort((a, b) => b.sc - a.sc);
 
-    return scored.slice(0, MAX_RESULTS).map(x => x.it);
+    return scored.slice(0, MAX_RESULTS).map((x) => x.it);
   }
 
   function clearList(list, tpl) {
     if (!list) return;
     qsa('[data-mk="search_item"]', list).forEach((n) => n.remove());
-    // lämna template kvar
     if (tpl) tpl.style.display = "none";
   }
 
@@ -161,10 +198,17 @@
       safeText(qs('[data-mk="search_title"]', node), it.title);
       safeText(qs('[data-mk="search_location"]', node), it.location);
       safeText(qs('[data-mk="search_price"]', node), fmtPrice(it.price));
-      safeText(qs('[data-mk="search_source"]', node), String(it.source || "").toUpperCase() || "—");
+      safeText(
+        qs('[data-mk="search_source"]', node),
+        String(it.source || "").toUpperCase() || "—"
+      );
 
       list.appendChild(node);
     });
+
+    // ✅ efter render: sätt max-height så 5 rader syns (eller färre om färre hits)
+    // kör i nästa frame så layout hunnit uppdateras
+    requestAnimationFrame(() => setListHeight(list, Math.min(items.length, MAX_RESULTS)));
   }
 
   function goToSearch(query, openId = null) {
@@ -180,8 +224,8 @@
   async function init() {
     const input = qs('[data-mk="search_input"]');
     const panel = qs('[data-mk="search_panel"]');
-    const list  = qs('[data-mk="search_list"]');
-    const tpl   = qs('[data-mk="search_item_tpl"]');
+    const list = qs('[data-mk="search_list"]');
+    const tpl = qs('[data-mk="search_item_tpl"]');
     const showAll = qs('[data-mk="search_show_all"]');
     const showAllLbl = qs('[data-mk="search_show_all_label"]');
 
@@ -190,14 +234,17 @@
       return;
     }
 
-    // start: göm panel
     closePanel(panel);
-
-    // se till att template alltid är osynlig
     tpl.style.display = "none";
 
+    // ✅ se till att listan aldrig påverkar blur på panelen:
+    // panelen kan ha overflow hidden för blur, listan får scroll.
+    list.style.overflowY = "auto";
+    list.style.overflowX = "hidden";
+    list.style.maxHeight = `${LIST_MAX_PX}px`;
+
     const allItems = await loadIndex();
-    window.__MK_SEARCH_INDEX = allItems; // debug
+    window.__MK_SEARCH_INDEX = allItems;
 
     const updateShowAll = (q) => {
       if (!showAllLbl) return;
@@ -212,25 +259,31 @@
 
       if (query.length < MIN_CHARS) {
         clearList(list, tpl);
+        closePanel(panel);
         return;
       }
 
       const hits = topMatches(allItems, query);
+
+      if (!hits.length) {
+        clearList(list, tpl);
+        closePanel(panel);
+        return;
+      }
+
       render(list, tpl, hits);
       openPanel(panel);
     }, DEBOUNCE_MS);
 
-    input.addEventListener("input", (e) => {
-      doSearch(e.target.value);
-    });
+    input.addEventListener("input", (e) => doSearch(e.target.value));
 
     input.addEventListener("focus", () => {
       const q = String(input.value || "").trim();
       updateShowAll(q);
-      if (q.length >= MIN_CHARS) openPanel(panel);
+      if (q.length >= MIN_CHARS) doSearch(q);
     });
 
-    // Klick på resultat → till söksida med open=id (sök-sidan kan auto-öppna modal där)
+    // Klick på resultat → till söksida med open=id
     document.addEventListener("click", (e) => {
       const row = e.target.closest('[data-mk="search_item"][data-id]');
       if (!row) return;
@@ -272,3 +325,4 @@
     init();
   }
 })();
+
