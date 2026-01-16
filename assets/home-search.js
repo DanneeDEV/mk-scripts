@@ -25,7 +25,7 @@
     return Number.isFinite(n) && n > 0 ? `${n.toLocaleString("sv-SE")} kr` : "—";
   };
 
-  // “åäö” → aao, + lowercase, + bort extra
+  // “åäö” → aao + lowercase
   const fold = (s) =>
     String(s || "")
       .toLowerCase()
@@ -63,14 +63,27 @@
     el.style.backgroundRepeat = "no-repeat";
   }
 
+  // ✅ Dynamisk höjd (så panelen inte blir ett streck i published)
   function openPanel(panel) {
     if (!panel) return;
     panel.setAttribute("data-open", "1");
+
+    // nolla först
+    panel.style.maxHeight = "0px";
+
+    requestAnimationFrame(() => {
+      // tvinga reflow (Webflow kan vara weird)
+      panel.getBoundingClientRect();
+
+      const h = panel.scrollHeight;
+      panel.style.maxHeight = h + "px";
+    });
   }
 
   function closePanel(panel) {
     if (!panel) return;
     panel.setAttribute("data-open", "0");
+    panel.style.maxHeight = "0px";
   }
 
   // =========================
@@ -150,10 +163,7 @@
   function clearList(list, tpl) {
     if (!list) return;
 
-    // ta bort alla som INTE är templaten
-    qsa('[data-mk="search_item"]', list).forEach((n) => {
-      if (n !== tpl) n.remove();
-    });
+    qsa('[data-mk="search_item"]', list).forEach((n) => n.remove());
 
     if (tpl) tpl.style.display = "none";
   }
@@ -234,7 +244,9 @@
 
       const hits = topMatches(allItems, query);
       render(list, tpl, hits);
-      openPanel(panel);
+
+      // ✅ öppna EFTER render (så scrollHeight blir korrekt)
+      requestAnimationFrame(() => openPanel(panel));
     }, DEBOUNCE_MS);
 
     input.addEventListener("input", (e) => run(e.target.value));
@@ -242,10 +254,13 @@
     input.addEventListener("focus", () => {
       const q = String(input.value || "").trim();
       updateShowAll(q);
-      if (q.length >= MIN_CHARS) openPanel(panel);
+      if (q.length >= MIN_CHARS) {
+        // om det redan finns items renderade kan den öppnas direkt
+        requestAnimationFrame(() => openPanel(panel));
+      }
     });
 
-    // Klick på resultat → söksida med open=id
+    // Klick på rad → söksida
     document.addEventListener("click", (e) => {
       const row = e.target.closest('[data-mk="search_item"][data-id]');
       if (!row) return;
@@ -287,6 +302,3 @@
     init();
   }
 })();
-
-
-
