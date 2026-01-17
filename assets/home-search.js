@@ -184,12 +184,41 @@
     }
   }
 
-  function goToSearch(query, openId=null){
+  function goToSearch(query, openId=null, meta=null){
     const u = new URL(SEARCH_PAGE_URL, location.origin);
     if (query) u.searchParams.set("q", query);
     if (openId) u.searchParams.set("open", String(openId));
+  
+    const q = String(query || "").trim();
+  
+    // ✅ Telemetry: submit alltid
+    if (q) {
+      window.__MK_T?.post("/search", {
+        kind: "submit",
+        q,
+        open: openId ? String(openId) : null,
+        source_page: openId ? "home_dropdown_item" : "home_show_all_or_enter",
+      });
+    }
+  
+    // ✅ Telemetry: open-event när man klickar specifikt förslag
+    if (openId) {
+      window.__MK_T?.post("/click", {
+        kind: "open",
+        listing_id: String(openId),
+        source: meta?.source || null,
+        brand: meta?.brand || null,
+        lan_slug: meta?.lan_slug || null,
+        title: meta?.title || null,
+        target_url: meta?.url || null,
+        source_page: "home_dropdown_item",
+      });
+    }
+  
     location.href = u.toString();
   }
+
+
 
   // =========================
   // INIT
@@ -291,10 +320,21 @@
       if (!row) return;
       e.preventDefault();
       e.stopPropagation();
+    
       const id = row.getAttribute("data-id");
       const q = String(input.value||"").trim();
-      goToSearch(q, id);
+    
+      const it = (window.__MK_SEARCH_INDEX || []).find(x => String(x.id) === String(id));
+    
+      goToSearch(q, id, it ? {
+        source: it.source,
+        brand: it.brand,
+        lan_slug: it.lan_slug,
+        title: it.title,
+        url: it.url
+      } : null);
     });
+
 
     if (footer){
       footer.addEventListener("click", (e) => {
